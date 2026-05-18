@@ -1,6 +1,6 @@
 {
-    "target_directory": "/home/archxseo/Documents/MyCodePlatform/MrXseo - Page/",
-    "output_file": "/home/archxseo/Documents/MyCodePlatform/MrXseo - Page/my_project.txt",
+    "target_directory": "/home/archxseo/Documents/MyCodePlatform/my_code_platform_tools/dumper/",
+    "output_file": "/home/archxseo/Documents/MyCodePlatform/my_code_platform_tools/dumper/dumps/my_project.txt",
     "plugins": {
         "directory_structure": {
             "enabled": true,
