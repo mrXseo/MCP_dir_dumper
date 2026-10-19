@@ -1,6 +1,6 @@
-# project/plugins/directory_structure_plugin.py
 import os
-from typing import TextIO, List, Optional
+import re
+from typing import TextIO, List, Optional, Pattern
 
 from ..blank_plugin import DumperPlugin
 
@@ -10,8 +10,7 @@ class DirectoryStructurePlugin(DumperPlugin):
     Плагин для генерации раздела "Структура директории" в дампе.
 
     Рекурсивно обходит целевую директорию и строит текстовое дерево.
-    Поддерживает фильтрацию по именам папок/файлов (чёрный список).
-    В будущем — стратегии комментирования узлов.
+    Поддерживает фильтрацию по регулярным выражениям (regex).
     """
 
     host_key: str = "directory_structure"
@@ -21,11 +20,20 @@ class DirectoryStructurePlugin(DumperPlugin):
         super().__init__(config=config, **kwargs)
 
     def configure(self, **kwargs) -> None:
-        """Извлекает настройки из self.config и kwargs."""
-        self.include_extensions: List[str] = self.config.get("include_extensions", ["*"])
-        self.exclude_names: List[str] = self.config.get("exclude_names", [])
-        self.exclude_extensions: List[str] = self.config.get("exclude_extensions", [])
-        self.include_names: List[str] = self.config.get("include_names", ["*"])
+        """
+        Извлекает и компилирует настройки из self.config.
+        BREAKING CHANGE: Фильтрация теперь осуществляется исключительно через regex.
+        """
+        raw_included = self.config.get("included", [r".*"])
+        raw_excluded = self.config.get("excluded", [])
+
+        # Fail-fast валидация: ловим ошибки синтаксиса regex сразу при старте.
+        try:
+            self._compiled_included: List[Pattern] = [re.compile(p) for p in raw_included]
+            self._compiled_excluded: List[Pattern] = [re.compile(p) for p in raw_excluded]
+        except re.error as e:
+            raise ValueError(f"Invalid regex pattern in plugin '{self.host_key}': {e}")
+
         # Поле для будущей стратегии комментирования узлов
         self.strategy: Optional[str] = self.config.get("strategy", None)
 
@@ -43,8 +51,8 @@ class DirectoryStructurePlugin(DumperPlugin):
         except PermissionError:
             return
 
-        # Фильтруем по именам
-        entries = [e for e in entries if self._should_include_name(e)]
+        # Фильтруем элементы через единый метод проверки
+        entries = [e for e in entries if self._should_include(e)]
         if not entries:
             return
 
@@ -53,7 +61,7 @@ class DirectoryStructurePlugin(DumperPlugin):
             is_last = (i == len(entries) - 1)
             is_dir = os.path.isdir(full_path)
 
-            # Выбираем соединитель
+            # Выбираем соединитель для ASCII-дерева
             connector = "`*--" if is_last else "|*--"
             connector += ", " if is_dir else "- "
             output.write(f".    {prefix}{connector}{entry}{'/' if is_dir else ''}\n")
@@ -63,17 +71,24 @@ class DirectoryStructurePlugin(DumperPlugin):
                 extension = "    " if is_last else "|   "
                 self._walk(full_path, output, prefix + extension)
 
-    def _should_include_name(self, name: str) -> bool:
-        """Проверяет, проходит ли имя через фильтры include/exclude."""
-        # Исключённые имена
-        if self._matches(name, self.exclude_names):
+    def _should_include(self, name: str) -> bool:
+        """
+        Проверяет, проходит ли элемент (файл или директория) через фильтры.
+        Приоритет: exclude (denylist) всегда сильнее include (allowlist).
+        """
+        # 1. Проверка на исключение
+        if self._matches(name, self._compiled_excluded):
             return False
-        # Если include_names заданы явно (не ["*"]), проверяем вхождение
-        if self.include_names and self.include_names != ["*"]:
-            return self._matches(name, self.include_names)
-        return True
+        
+        # 2. Проверка на включение
+        # Если список включений пуст, элемент отвергается (защитный механизм).
+        # По умолчанию там [r".*"], что разрешает всё, не попавшее в exclude.
+        if not self._compiled_included:
+            return False
+            
+        return self._matches(name, self._compiled_included)
 
     @staticmethod
-    def _matches(name: str, patterns: List[str]) -> bool:
-        """Точное совпадение или символ '*' (глобальное разрешение)."""
-        return "*" in patterns or name in patterns
+    def _matches(value: str, patterns: List[Pattern]) -> bool:
+        """Поиск совпадений по предкомпилированным регулярным выражениям."""
+        return any(pattern.search(value) for pattern in patterns)
