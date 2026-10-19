@@ -1,20 +1,88 @@
 {
-    "target_directory": "/home/archxseo/Documents/MyCodePlatform/my_code_platform_tools/dumper/",
-    "output_file": "/home/archxseo/Documents/MyCodePlatform/my_code_platform_tools/dumper/dumps/my_project.txt",
-    "plugins": {
-        "directory_structure": {
-            "enabled": true,
-            "include_extensions": ["*"],
-            "exclude_names": [".git", "__pycache__", "node_modules", ".venv"]
-        },
-        "file_contents": {
-            "enabled": true,
-            "include_extensions": [".py", ".md", ".txt"],
-            "exclude_extensions": [".lock", ".json"],
-            "include_names": ["*"],
-            "exclude_names": [".DS_Store", "__pycache__", "dumps", ".venv"],
-            "block_header_template": "===== Файл: {relative_path} =====",
-            "block_footer_template": "===== Конец: {relative_path} ====="
-        }
+  "target_directory": ".",
+  "output_file": "./.dump.txt",
+  "plugins": {
+    "directory_structure": {
+      "enabled": true,
+      "excluded": [
+        "^\\.git$",
+        "^__pycache__$",
+        "^node_modules$",
+        "^\\.venv$",
+        "^venv$",
+        "^\\.env$",
+        "^env$",
+        "^\\.idea$",
+        "^\\.vscode$",
+        "^\\.DS_Store$",
+        "^Thumbs\\.db$",
+        "\\.pyc$",
+        "\\.pyo$",
+        "\\.log$",
+        "\\.egg-info$",
+        "^\\.mypy_cache$",
+        "^\\.pytest_cache$",
+        "^\\.ruff_cache$",
+        "^dist$",
+        "^build$",
+        "^\\.tox$",
+        "^\\.nox$"
+      ],
+      "included": [
+        ".*"
+      ]
+    },
+    "file_contents": {
+      "enabled": true,
+      "excluded": [
+        "^\\.git$",
+        "^__pycache__$",
+        "^node_modules$",
+        "^\\.venv$",
+        "^venv$",
+        "^\\.idea$",
+        "^\\.vscode$",
+        "\\.pyc$",
+        "\\.pyo$",
+        "\\.log$",
+        "\\.exe$",
+        "\\.dll$",
+        "\\.so$",
+        "\\.dylib$",
+        "\\.bin$",
+        "\\.dat$",
+        "\\.db$",
+        "\\.sqlite$",
+        "\\.sqlite3$",
+        "\\.jpg$",
+        "\\.jpeg$",
+        "\\.png$",
+        "\\.gif$",
+        "\\.bmp$",
+        "\\.ico$",
+        "\\.svg$",
+        "\\.mp3$",
+        "\\.mp4$",
+        "\\.avi$",
+        "\\.mov$",
+        "\\.zip$",
+        "\\.rar$",
+        "\\.tar$",
+        "\\.gz$",
+        "\\.7z$",
+        "\\.pdf$",
+        "\\.docx?$",
+        "\\.xlsx?$",
+        "\\.pptx?$",
+        "^\\.dir_dumper\\.config\\.json$",
+        "^\\.dump\\.txt$"
+      ],
+      "included": [
+        ".*"
+      ],
+      "block_header_template": "===== Файл: {relative_path} =====",
+      "block_footer_template": "===== Конец: {relative_path} =====",
+      "max_rows": -1
     }
+  }
 }
