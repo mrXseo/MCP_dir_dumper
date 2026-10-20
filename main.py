@@ -18,7 +18,7 @@ def main() -> None:
     parser.add_argument(
         "config",
         nargs="?",
-        default=str(HERE / "configs" / "full_dump.json"),
+        default=str(HERE / "configs" / ".dump.json"),
         help="Путь к JSON-конфигу",
     )
     parser.add_argument(
