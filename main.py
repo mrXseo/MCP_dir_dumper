@@ -65,7 +65,6 @@ def resolve_config(target: Path, explicit: Optional[str], verbose: bool) -> Path
                 f"Создайте локальный: python main.py \"{target}\" --build"
             )
 
-    # Валидируем сразу, чтобы не падать внутри PluginHost на середине работы.
     load_json(path)
 
     if verbose:
@@ -78,9 +77,13 @@ def update_gitignore(target: Path, verbose: bool) -> None:
     Идемпотентно добавляет блок с маркером в .gitignore целевой директории.
     Если маркер уже есть — ничего не делает.
     """
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        fail(f"Не удалось создать директорию {target}: {e}")
+
     gitignore_path = target / ".gitignore"
 
-    # Читаем существующий .gitignore (если есть)
     existing_content = ""
     if gitignore_path.is_file():
         try:
@@ -88,19 +91,18 @@ def update_gitignore(target: Path, verbose: bool) -> None:
         except OSError as e:
             fail(f"Не удалось прочитать {gitignore_path}: {e}")
 
-    # Проверяем идемпотентность: если маркер уже есть, выходим
     if GITIGNORE_MARKER in existing_content:
         if verbose:
             print(f"Блок уже присутствует в {gitignore_path}, пропускаем")
+        else:
+            print(f".gitignore уже содержит блок, пропускаем: {gitignore_path}")
         return
 
-    # Формируем новое содержимое
     new_content = existing_content
     if new_content and not new_content.endswith("\n"):
         new_content += "\n"
     new_content += GITIGNORE_BLOCK
 
-    # Атомарная запись
     tmp = gitignore_path.with_name(gitignore_path.name + ".tmp")
     try:
         tmp.write_text(new_content, encoding="utf-8")
@@ -118,9 +120,12 @@ def update_gitignore(target: Path, verbose: bool) -> None:
 
 
 def build_config(
-    target: Path, source: Path, force: bool, gitignore: bool, verbose: bool
+    target: Path, source: Path, force: bool, verbose: bool
 ) -> Path:
-    """Копирует шаблон в целевую директорию как .dir_dumper.conf.json."""
+    """
+    Копирует шаблон в целевую директорию как .dir_dumper.conf.json.
+    Идемпотентно: если файл уже есть и --force не указан — пропускает.
+    """
     try:
         target.mkdir(parents=True, exist_ok=True)
     except OSError as e:
@@ -128,49 +133,39 @@ def build_config(
 
     dest = target / LOCAL_CONFIG_NAME
 
-    # --config может указывать уже на сам локальный конфиг.
     if source.resolve() == dest.resolve():
         print(f"Локальный конфиг уже на месте: {dest}")
-    else:
-        if dest.exists() and not force:
-            fail(
-                f"Файл уже существует: {dest}\n"
-                f"Используйте --force для перезаписи.",
-                code=2,
-            )
+        return dest
 
-        config = load_json(source)
+    if dest.exists() and not force:
+        print(f"Локальный конфиг уже существует, пропускаем: {dest}")
+        print(f"Для перезаписи используйте: --force")
+        return dest
 
-        # Привязываем к реальному месту создания: запуск с любого cwd
-        # должен дампить именно эту директорию в её же .dump.txt.
-        config["target_directory"] = str(target.resolve())
-        config["output_file"] = str((target / DUMP_FILE_NAME).resolve())
+    config = load_json(source)
 
-        # Атомарная запись: не портим существующий конфиг при сбое.
-        tmp = dest.with_name(dest.name + ".tmp")
-        try:
-            tmp.write_text(
-                json.dumps(config, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
-            tmp.replace(dest)
-        except OSError as e:
-            fail(f"Не удалось записать {dest}: {e}")
-        finally:
-            if tmp.exists():
-                tmp.unlink(missing_ok=True)
+    config["target_directory"] = str(target.resolve())
+    config["output_file"] = str((target / DUMP_FILE_NAME).resolve())
 
-        if verbose:
-            print(f"Шаблон: {source}")
+    tmp = dest.with_name(dest.name + ".tmp")
+    try:
+        tmp.write_text(
+            json.dumps(config, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        tmp.replace(dest)
+    except OSError as e:
+        fail(f"Не удалось записать {dest}: {e}")
+    finally:
+        if tmp.exists():
+            tmp.unlink(missing_ok=True)
 
-        print(f"Создан локальный конфиг: {dest}")
-        print(f"Целевая директория: {config['target_directory']}")
-        print(f"Файл дампа: {config['output_file']}")
+    if verbose:
+        print(f"Шаблон: {source}")
 
-    # Обновляем .gitignore, если запрошено
-    if gitignore:
-        update_gitignore(target, verbose)
-
+    print(f"Создан локальный конфиг: {dest}")
+    print(f"Целевая директория: {config['target_directory']}")
+    print(f"Файл дампа: {config['output_file']}")
     return dest
 
 
@@ -185,6 +180,7 @@ def parse_args() -> argparse.Namespace:
             "  python main.py ./my_project\n"
             "  python main.py ./my_project --build\n"
             "  python main.py ./my_project --build --gitignore\n"
+            "  python main.py ./my_project --gitignore\n"
             "  python main.py --config ./custom.json\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -203,7 +199,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--build",
         action="store_true",
-        help="Создать .dir_dumper.conf.json в целевой директории и выйти",
+        help="Создать .dir_dumper.conf.json в целевой директории (идемпотентно)",
     )
     parser.add_argument(
         "-f", "--force",
@@ -213,7 +209,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--gitignore",
         action="store_true",
-        help="С --build: идемпотентно добавить /.dump.txt и /.dir_dumper.conf.json в .gitignore",
+        help="Идемпотентно добавить /.dump.txt и /.dir_dumper.conf.json в .gitignore",
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -226,11 +222,17 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    if (args.force or args.gitignore) and not args.build:
-        fail("--force и --gitignore имеют смысл только вместе с --build", code=2)
+    # --force имеет смысл только с --build
+    if args.force and not args.build:
+        fail("--force имеет смысл только вместе с --build", code=2)
 
     target = Path(args.target).expanduser().resolve()
 
+    # --gitignore может работать как самостоятельно, так и с --build
+    if args.gitignore:
+        update_gitignore(target, args.verbose)
+
+    # --build создаёт конфиг (идемпотентно)
     if args.build:
         source = (
             Path(args.config).expanduser().resolve()
@@ -240,17 +242,17 @@ def main() -> None:
         if not source.is_file():
             fail(f"Шаблон конфига не найден: {source}")
 
-        build_config(
-            target, source, force=args.force, gitignore=args.gitignore, verbose=args.verbose
-        )
+        build_config(target, source, force=args.force, verbose=args.verbose)
         print(f"\nЗапуск дампа: python main.py \"{target}\"")
         return
 
-    config_path = resolve_config(target, args.config, args.verbose)
+    # Если не было ни --build, ни --gitignore — запускаем дамп
+    if not args.gitignore:
+        config_path = resolve_config(target, args.config, args.verbose)
 
-    print(f"Загружаю конфиг: {config_path}")
-    host = PluginHost(str(config_path), verbose=args.verbose)
-    host.run()
+        print(f"Загружаю конфиг: {config_path}")
+        host = PluginHost(str(config_path), verbose=args.verbose)
+        host.run()
 
 
 if __name__ == "__main__":
